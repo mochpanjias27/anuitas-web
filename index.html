@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Anuitas Lab · Matematika Keuangan Unpad</title>
+  <meta name="description" content="Belajar anuitas lewat studi kasus interaktif: nilai sekarang, anuitas di muka, anuitas ditunda, dan latihan soal dengan umpan balik.">
+  <link rel="icon" type="image/png" href="/logo-unpad.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Unbounded:wght@500;700;800&family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+</head>
+<body>
+  <div class="nav">
+    <div class="nav-in">
+      <a class="brand" href="#/">
+        <img class="logo" src="/logo-unpad.png" alt="Logo Universitas Padjadjaran" width="38" height="38">
+        <div><b>Anuitas Lab</b><small>MATEMATIKA KEUANGAN</small></div>
+      </a>
+      <nav class="nav-links" aria-label="Navigasi utama">
+        <a href="#/" data-nav="home">Beranda</a>
+        <a href="#/kasus/1" data-nav="kasus">Studi Kasus</a>
+        <a href="#/rumus" data-nav="rumus">Ringkasan Rumus</a>
+        <a href="#/latihan" data-nav="latihan">Uji Pemahaman</a>
+      </nav>
+      <button class="btn btn-ink" id="whoBtn" type="button">Isi Nama &amp; NPM</button>
+    </div>
+  </div>
+
+  <main class="wrap" id="app"></main>
+
+  <footer class="wrap">
+    <img src="/logo-unpad.png" alt="" width="28" height="28">
+    <span class="mono-label">Matematika Keuangan · Departemen Matematika FMIPA Universitas Padjadjaran</span>
+  </footer>
+
+  <div class="modal" id="modal" role="dialog" aria-modal="true" aria-labelledby="mTitle">
+    <form class="card" id="whoForm">
+      <h3 id="mTitle">Identitas latihan</h3>
+      <p class="note">Hanya disimpan di browser ini, untuk menandai riwayat belajar dan skor latihanmu.</p>
+      <label for="fName">Nama</label><input type="text" id="fName" autocomplete="name" required>
+      <label for="fNpm">NPM</label><input type="text" id="fNpm" inputmode="numeric" required>
+      <div class="modal-actions">
+        <button class="btn btn-glass" type="button" id="mClose">Batal</button>
+        <button class="btn btn-volt" type="submit">Simpan</button>
+      </div>
+    </form>
+  </div>
+
+  <script type="module" src="/src/main.js"></script>
+</body>
+</html>
