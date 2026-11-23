@@ -85,7 +85,7 @@ button,input,select{font:inherit;color:inherit}
 .hero{display:grid;grid-template-columns:minmax(0,.9fr) minmax(0,1.25fr);gap:12px;align-items:center;padding-top:36px}
 .tag{display:inline-flex;align-items:center;gap:10px;font-family:var(--font-mono);font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--volt-ink);background:var(--glass);border:1px solid var(--line);padding:7px 12px;border-radius:10px}
 .tag i{width:8px;height:8px;border-radius:50%;background:var(--volt);box-shadow:0 0 0 4px var(--volt-soft),0 0 12px var(--volt)}
-.hero h1{font-size:clamp(36px,4.6vw,62px);font-weight:800;margin:22px 0 20px;letter-spacing:-.04em}
+.hero h1{font-size:clamp(32px,4.1vw,56px);font-weight:800;margin:22px 0 20px;letter-spacing:-.04em}
 .hl{background:linear-gradient(95deg,#00b765 10%,#00c9a7 55%,#12a9e6 95%);-webkit-background-clip:text;background-clip:text;color:transparent}
 .lead{color:var(--muted);font-size:17px;max-width:44ch}
 .hero-cta{display:flex;gap:10px;flex-wrap:wrap;margin-top:30px}

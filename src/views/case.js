@@ -6,6 +6,13 @@ import { store } from '../lib/store.js';
 import { createTimeline } from '../three/timeline.js';
 import { registerView, unregisterView, webglAvailable } from '../three/common.js';
 
+const rateOf = (def, p) => (def.rate ? def.rate(p) : iOf(p, def.conv));
+const horizonOf = (def, p) => (def.horizon ? def.horizon(p) : 0);
+/** Nilai tiap pilihan: PV di t = 0, atau FV di t = H untuk kasus akumulasi */
+function valuesOf(def, p, i, streams) {
+  const H = horizonOf(def, p), g = Math.pow(1 + i, H);
+  return Object.fromEntries(streams.map(s => [s.key, pvFlows(s.flows, i) * g]));
+}
 const fmtParam = (p, x) => (p.unit === 'rp' ? fmt(x, 0) : p.unit === 'pct' ? fmt(x, 2).replace(/,?0+$/, '') + '%' : String(x));
 
 export function renderCase(app, id) {
@@ -24,13 +31,14 @@ export function renderCase(app, id) {
   const prev = CASES[idx - 1], next = CASES[idx + 1];
 
   const defaultsP = { ...def.defaults };
-  const di = iOf(defaultsP, def.conv);
+  const di = rateOf(def, defaultsP);
   const dStreams = def.streams(defaultsP, di);
-  const dPvs = Object.fromEntries(dStreams.map(s => [s.key, pvFlows(s.flows, di)]));
+  const dPvs = valuesOf(def, defaultsP, di, dStreams);
   const dSummary = def.summarize(defaultsP, di, dStreams, dPvs);
   const guessKey = def.guessAnswer(defaultsP, dSummary);
   const steps = def.steps(defaultsP);
-  const tlStreams = () => def.streams(st.p, iOf(st.p, def.conv)).filter(s => s.timeline);
+  const tlStreams = () => def.streams(st.p, rateOf(def, st.p)).filter(s => s.timeline);
+  const fvCase = !!def.horizon;
 
   app.innerHTML = `
   <section class="page-top">
@@ -71,7 +79,7 @@ export function renderCase(app, id) {
         <div class="tl-canvas" id="tlCanvas"></div>
         <div class="tl-legend holo hud" id="tlLegend"></div>
         <div class="tl-actions">
-          <button class="btn btn-volt" type="button" id="discBtn">Diskontokan ke t = 0</button>
+          <button class="btn btn-volt" type="button" id="discBtn">${fvCase ? 'Akumulasikan ke akhir' : 'Diskontokan ke t = 0'}</button>
           <button class="btn btn-glass" type="button" id="resetBtn">Ulangi</button>
         </div>
       </div>
@@ -93,7 +101,7 @@ export function renderCase(app, id) {
           <p class="note" id="insight" style="margin-bottom:12px"></p>
           <div class="tbl-wrap">
             <table>
-              <thead><tr><th>t</th><th>ARUS KAS</th><th>v<sup>t</sup></th><th>NILAI DI t = 0</th></tr></thead>
+              <thead><tr><th>t</th><th>ARUS KAS</th><th id="thF">v<sup>t</sup></th><th id="thV">NILAI DI t = 0</th></tr></thead>
               <tbody id="tbody"></tbody>
               <tfoot><tr><td colspan="3" style="text-align:right" id="tfootLabel">Σ = PV</td><td id="tsum"></td></tr></tfoot>
             </table>
@@ -135,9 +143,9 @@ export function renderCase(app, id) {
     $('#streamSeg').classList.toggle('hidden', ts.length < 2);
   }
   function update(rebuild = true) {
-    const p = st.p, i = iOf(p, def.conv);
+    const p = st.p, i = rateOf(def, p), H = horizonOf(def, p);
     const streams = def.streams(p, i);
-    const pvs = Object.fromEntries(streams.map(s => [s.key, pvFlows(s.flows, i)]));
+    const pvs = valuesOf(def, p, i, streams);
     const sum = def.summarize(p, i, streams, pvs);
     def.params.forEach(pr => { $(`#out_${pr.key}`).textContent = fmtParam(pr, p[pr.key]); });
 
@@ -146,7 +154,7 @@ export function renderCase(app, id) {
     const dec = $('#decision'); dec.className = 'decision ' + sum.decision.tone; dec.textContent = sum.decision.text;
 
     let insight = sum.insight || '';
-    if (!insight && streams.length === 2 && def.goal !== 'solve') {
+    if (!insight && streams.length === 2 && def.goal !== 'solve' && !def.rate) {
       const f = ii => { const ss = def.streams(p, ii); return pvFlows(ss[0].flows, ii) - pvFlows(ss[1].flows, ii); };
       const cr = crossRate(f, 1e-6, 0.2);
       insight = cr == null ? `Pada rentang ${def.rateLabel.replace(/<[^>]+>/g, '')} 0–${fmt(20 * def.conv, 0)}% per tahun keputusan ini tidak berubah.`
@@ -157,15 +165,21 @@ export function renderCase(app, id) {
     const ts = streams.filter(s => s.timeline);
     const shown = ts.find(s => s.key === st.streamKey) || ts[0];
     if (shown) {
-      $('#tbody').innerHTML = shown.flows.map(f => { const v = Math.pow(1 + i, -f.t); return `<tr><td>${f.t}</td><td>${fmt(f.amt, 0)}</td><td>${fmt(v, 5)}</td><td>${fmt(f.amt * v)}</td></tr>`; }).join('');
+      $('#thF').innerHTML = H ? `(1+i)<sup>${H}−t</sup>` : 'v<sup>t</sup>';
+      $('#thV').textContent = H ? `NILAI DI t = ${H}` : 'NILAI DI t = 0';
+      $('#tbody').innerHTML = shown.flows.map(f => { const v = Math.pow(1 + i, H - f.t); return `<tr><td>${f.t}</td><td>${fmt(f.amt, 0)}</td><td>${fmt(v, 5)}</td><td>${fmt(f.amt * v)}</td></tr>`; }).join('');
       $('#tsum').textContent = fmt(pvs[shown.key]);
-      $('#tfootLabel').textContent = `Σ = PV ${shown.label}`;
+      $('#tfootLabel').textContent = `Σ = ${H ? 'FV' : 'PV'} ${shown.label}`;
       if (tl) {
-        const pvText = def.pvText ? def.pvText(p) : `PV = ${rp(pvs[shown.key], 0)}`;
-        tl.setPvText(st.unlocked ? pvText : 'PV = ?');
+        const tag = H ? 'FV' : 'PV';
+        const pvText = def.pvText ? def.pvText(p, shown) : `${tag} = ${rp(pvs[shown.key], 0)}`;
+        tl.setPvText(st.unlocked ? pvText : `${tag} = ?`);
         if (rebuild) {
-          const { group } = tl.build({ flows: shown.flows, i, defer: shown.defer || 0 });
-          $('#tlLegend').innerHTML = `Setiap koin adalah ${group > 1 ? `gabungan ${group} pembayaran` : 'satu pembayaran'} <b>${shown.label}</b>; sumbu waktu dalam ${def.unit}. Tekan <b>Diskontokan</b>: koin meluncur ke t = 0 dan menyusut sebesar faktor <span class="it">v</span><sup><span class="it">t</span></sup>.`;
+          const { group } = tl.build({ flows: shown.flows, i, defer: shown.defer || 0, horizon: H });
+          const how = H
+            ? `Tekan <b>Akumulasikan</b>: koin meluncur ke t = ${H} dan membesar sebesar faktor (1 + <span class="it">i</span>)<sup>${H}−<span class="it">t</span></sup>.`
+            : 'Tekan <b>Diskontokan</b>: koin meluncur ke t = 0 dan menyusut sebesar faktor <span class="it">v</span><sup><span class="it">t</span></sup>.';
+          $('#tlLegend').innerHTML = `Setiap koin adalah ${group > 1 ? `gabungan ${group} pembayaran` : 'satu pembayaran'} <b>${shown.label}</b>; sumbu waktu dalam ${def.unit}. ${how}`;
         }
       }
     }

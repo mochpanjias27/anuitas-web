@@ -16,7 +16,7 @@ export function groupFlows(flows, i) {
     const part = sorted.slice(k, k + g);
     const amt = part.reduce((s, f) => s + f.amt, 0);
     const pv = part.reduce((s, f) => s + f.amt * Math.pow(1 + i, -f.t), 0);
-    out.push({ t: part.reduce((s, f) => s + f.t, 0) / part.length, tEnd: part[part.length - 1].t, amt, pv, v: amt ? pv / amt : 1 });
+    out.push({ t: part.reduce((s, f) => s + f.t, 0) / part.length, tEnd: part[part.length - 1].t, amt, pv, v: amt ? pv / amt : 1, grow: amt ? pv / amt : 1 });
   }
   return { coins: out, group: g };
 }
@@ -51,7 +51,7 @@ export function createTimeline(el) {
 
   const world = new THREE.Group(); scene.add(world);
   const deckTop = 0.47, baseStack = 0.36;
-  let runId = 0, coins = [], anims = [], pvText = 'PV = ?';
+  let runId = 0, coins = [], anims = [], pvText = 'PV = ?', stackBase = baseStack;
 
   function clear() {
     world.traverse(o => { if (o.geometry) o.geometry.dispose(); if (o.isSprite) o.material.dispose(); });
@@ -63,13 +63,23 @@ export function createTimeline(el) {
    * @param {{flows:{t:number,amt:number}[], i:number, defer?:number}} data
    * @returns {{group:number}} jumlah periode per koin
    */
-  function build({ flows, i, defer = 0 }) {
+  let fvMode = false;
+  function build({ flows, i, defer = 0, horizon = 0 }) {
     clear();
     if (!flows.length) return { group: 1 };
+    fvMode = horizon > 0;
     const { coins: cs, group } = groupFlows(flows, i);
-    const lastT = Math.max(1, ...flows.map(f => f.t));
+    const lastT = Math.max(1, horizon, ...flows.map(f => f.t));
     const sp = L / lastT;
-    const maxAmt = Math.max(...cs.map(c => c.amt));
+    // Mode FV: portal pindah ke t = H, koin membesar sebesar (1+i)^(H−t)
+    portal.position.x = fvMode ? horizon * sp : 0;
+    portal.position.y = fvMode ? 0.33 : 0;
+    stackBase = baseStack + portal.position.y;
+    t0Lab.position.x = portal.position.x;
+    t0Div.textContent = fvMode ? `t = ${horizon} · akhir` : 't = 0 · hari ini';
+    cs.forEach(c => { c.grow = fvMode ? (c.amt ? (c.pv * Math.pow(1 + i, horizon)) / c.amt : 1) : c.v; });
+    const maxGrow = fvMode ? Math.max(...cs.map(c => c.grow)) : 1;
+    const maxAmt = Math.max(...cs.map(c => c.amt)) * maxGrow;
     const cw = Math.min(L / Math.max(cs.length, 1), sp * group);
     const r = Math.min(0.6, cw * 0.42), th = r * 0.22;
     const every = Math.ceil(lastT / 12);
@@ -91,9 +101,10 @@ export function createTimeline(el) {
       const o = new CSS2DObject(d); o.position.set((defer * sp) / 2 + 0.55, deckTop + 0.1, -1.5); world.add(o);
     }
     cs.forEach(c => {
-      const s0 = Math.max(0.35, c.amt / maxAmt);
+      const s0 = Math.max(0.3, c.amt / maxAmt);
       const coin = makeCoin(r, th, cs.length <= 16);
-      const home = { x: c.t * sp, y: (c.t < 0.5 ? baseStack : deckTop) + r * s0 + 0.02, s: s0, rx: Math.PI / 2 };
+      const onPortal = fvMode ? Math.abs(c.t - horizon) < 0.5 : c.t < 0.5;
+      const home = { x: c.t * sp, y: (onPortal ? stackBase : deckTop) + r * s0 + 0.02, s: s0, rx: Math.PI / 2 };
       coin.position.set(home.x, home.y, 0); coin.rotation.x = home.rx; coin.scale.setScalar(s0);
       world.add(coin);
       coins.push({ obj: coin, home, info: c, th });
@@ -108,15 +119,15 @@ export function createTimeline(el) {
   }
   function discount() {
     reset(true);
-    let stack = baseStack;
+    let stack = stackBase;
     const now = performance.now();
     const gap = Math.max(40, Math.min(140, 2200 / Math.max(coins.length, 1)));
-    coins.slice().sort((a, b) => a.info.t - b.info.t).forEach((c, k) => {
-      const s = c.home.s * c.info.v, y = stack + (c.th * s) / 2; stack += c.th * s;
-      anims.push({ c, t0: now + k * (reduceMotion ? 0 : gap), dur: reduceMotion ? 1 : 950, from: { ...c.home }, to: { x: 0, y, s, rx: 0 } });
+    coins.slice().sort((a, b) => (fvMode ? b.info.t - a.info.t : a.info.t - b.info.t)).forEach((c, k) => {
+      const s = c.home.s * c.info.grow, y = stack + (c.th * s) / 2; stack += c.th * s;
+      anims.push({ c, t0: now + k * (reduceMotion ? 0 : gap), dur: reduceMotion ? 1 : 950, from: { ...c.home }, to: { x: portal.position.x, y, s, rx: 0 } });
     });
     const lastA = anims[anims.length - 1];
-    pvLab.position.set(0, stack + 1.3, 0);
+    pvLab.position.set(portal.position.x, stack + 1.3, 0);
     const run = ++runId;
     setTimeout(() => { if (run !== runId) return; pvDiv.textContent = pvText; pvLab.visible = true; }, lastA ? lastA.t0 - now + lastA.dur : 0);
   }
@@ -141,7 +152,7 @@ export function createTimeline(el) {
         if (p <= 0) return;
         const e = ease(p), f = a.from, to = a.to, o = a.c.obj;
         o.position.x = lerp(f.x, to.x, e);
-        o.position.y = lerp(f.y, to.y, e) + Math.sin(e * Math.PI) * (1.3 + f.x * 0.06);
+        o.position.y = lerp(f.y, to.y, e) + Math.sin(e * Math.PI) * (1.3 + Math.abs(f.x - to.x) * 0.06);
         o.rotation.x = lerp(f.rx, to.rx, e);
         o.scale.setScalar(lerp(f.s, to.s, e));
       });

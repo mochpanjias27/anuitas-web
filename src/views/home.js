@@ -13,8 +13,8 @@ export function renderHome(app) {
   <header class="hero">
     <div>
       <span class="tag"><i></i>Anuitas · Nilai Sekarang</span>
-      <h1>Uang besok,<br><span class="hl">berapa nilainya hari ini?</span></h1>
-      <p class="lead">Lihat setiap pembayaran meluncur dari masa depan ke hari ini dan menyusut karena bunga. Lalu putuskan pilihan yang paling menguntungkan dalam studi kasus nyata.</p>
+      <h1>Anuitas di periode mendatang,<br><span class="hl">berapa nilainya saat ini?</span></h1>
+      <p class="lead">Lihat setiap pembayaran meluncur dari periode mendatang ke saat ini dan menyusut karena bunga. Lalu putuskan pilihan yang paling menguntungkan dalam studi kasus nyata.</p>
       <div class="hero-cta">
         <a class="btn btn-volt" href="#/kasus/${next.id}">${done ? 'Lanjutkan' : 'Mulai'} Studi Kasus ${pad2(next.id)} <span class="arr">→</span></a>
         <a class="btn btn-glass" href="#/latihan">Uji Pemahaman</a>

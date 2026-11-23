@@ -1,5 +1,5 @@
 // Definisi studi kasus. Setiap angka di teks dihitung dari parameter, jadi narasi selalu cocok dengan hasil.
-import { aAngle, aDue, disc, annuityFlows, pvFlows } from '../lib/finance.js';
+import { aAngle, aDue, disc, sAngle, annuityFlows, pvFlows, crossRate } from '../lib/finance.js';
 import { fmt, rp, rpShort, pct } from '../lib/format.js';
 import { frac, it, act } from '../lib/math.js';
 
@@ -24,18 +24,18 @@ function flowsFormula(flows, i) {
 const lumpFormula = (amt, word) => `${it('PV')} = <b class="num">${rp(amt)}</b> <span class="note">(${word} di ${it('t')} = 0, tidak didiskontokan)</span>`;
 
 /** Ringkasan pembanding generik: pilih PV terkecil (membayar) atau terbesar (menerima) */
-function compare(streams, pvs, goal) {
+function compare(streams, pvs, goal, tag = 'PV', when = 'hari ini') {
   const ranked = streams.map(s => ({ s, pv: pvs[s.key] })).sort((a, b) => (goal === 'min' ? a.pv - b.pv : b.pv - a.pv));
   const best = ranked[0], second = ranked[1];
   const diff = Math.abs(best.pv - second.pv);
   return {
-    kpis: streams.map(s => [`PV ${s.label}`, rpShort(pvs[s.key])]),
+    kpis: streams.map(s => [`${tag} ${s.label}`, rpShort(pvs[s.key])]),
     best: best.s, diff,
     decision: {
       tone: best.s.tone,
       text: goal === 'min'
-        ? `${best.s.label} lebih murah ${rp(diff, 0)} dalam nilai hari ini. Pilih ${best.s.label}.`
-        : `${best.s.label} lebih bernilai ${rp(diff, 0)} dalam nilai hari ini. Pilih ${best.s.label}.`,
+        ? `${best.s.label} lebih murah ${rp(diff, 0)} dalam nilai ${when}. Pilih ${best.s.label}.`
+        : `${best.s.label} lebih bernilai ${rp(diff, 0)} dalam nilai ${when}. Pilih ${best.s.label}.`,
     },
   };
 }
@@ -162,9 +162,9 @@ const kasus3 = {
     { key: 'n', label: 'n (bulan)', min: 6, max: 60, step: 1, unit: 'int' },
   ],
   defaults: { P: 20e6, j: 12, n: 24 },
-  storyTitle: 'Dani meminjam untuk laptop kerja',
-  story: p => `<p>Dani baru diterima kerja dan meminjam ${rp(p.P, 0)} untuk membeli laptop. Pinjaman dilunasi dengan ${p.n} kali angsuran bulanan yang sama besar, dibayar setiap akhir bulan.</p>
-    <p>Bunga pinjaman j<sub>12</sub> = ${fmt(p.j, 0)}% per tahun. Berapa angsuran yang harus Dani siapkan setiap bulan?</p>`,
+  storyTitle: 'Sinta meminjam untuk laptop kerja',
+  story: p => `<p>Sinta baru diterima kerja dan meminjam ${rp(p.P, 0)} untuk membeli laptop. Pinjaman dilunasi dengan ${p.n} kali angsuran bulanan yang sama besar, dibayar setiap akhir bulan.</p>
+    <p>Bunga pinjaman j<sub>12</sub> = ${fmt(p.j, 0)}% per tahun. Berapa angsuran yang harus Sinta siapkan setiap bulan?</p>`,
   options: p => [
     { tone: 'c', name: 'Pinjaman', value: rp(p.P, 0), detail: 'Diterima hari ini (t = 0).' },
     { tone: 'v', name: 'Angsuran', value: `${p.n} × A`, detail: 'Dibayar setiap akhir bulan. Nilai sekarangnya harus sama dengan pinjaman.' },
@@ -183,7 +183,7 @@ const kasus3 = {
     const p2 = { ...p, n: p.n + 12 }, A2 = installment(p2);
     return {
       kpis: [['Faktor a', fmt(aAngle(p.n, i), 4)], ['Angsuran A', rp(A)], ['Total dibayar', rpShort(tot)], ['Total bunga', rpShort(tot - p.P)]],
-      decision: { tone: 'v', text: `Angsuran Dani ${rp(A)} per bulan. Nilai sekarang seluruh angsuran tepat sama dengan pinjaman ${rp(p.P, 0)}.` },
+      decision: { tone: 'v', text: `Angsuran Sinta ${rp(A)} per bulan. Nilai sekarang seluruh angsuran tepat sama dengan pinjaman ${rp(p.P, 0)}.` },
       insight: `Jika tenor diperpanjang menjadi ${p2.n} bulan, angsuran turun menjadi ${rp(A2, 0)}, tetapi total bunga naik menjadi ${rp(A2 * p2.n - p.P, 0)}.`,
     };
   },
@@ -356,14 +356,272 @@ const kasus6 = {
   },
 };
 
-export const CASES = [kasus1, kasus2, kasus3, kasus4, kasus5, kasus6];
+/* ---------- Pembantu FV ---------- */
+const fvAnnuityFormula = ({ A, n, i, due = false }) => {
+  const iT = fmt(i, i < 0.01 ? 4 : 3);
+  const core = frac(`(1 + ${iT})<sup>${n}</sup> − 1`, iT);
+  const fv = A * sAngle(n, i) * (due ? 1 + i : 1);
+  return due
+    ? `${it('FV')} = ${it('A')}·${act('s̈', n)} = ${fmt(A, 0)} · ${core} · (1 + ${iT}) = <b class="num">${rp(fv)}</b>`
+    : `${it('FV')} = ${it('A')}·${act('s', n)} = ${fmt(A, 0)} · ${core} = <b class="num">${rp(fv)}</b>`;
+};
+const fvLumpFormula = (L, i, H) => `${it('FV')} = ${it('L')}·(1 + ${it('i')})<sup>${H}</sup> = ${fmt(L, 0)} · ${fmt(1 + i, 4)}<sup>${H}</sup> = <b class="num">${rp(L * Math.pow(1 + i, H))}</b>`;
 
-export const UPCOMING = [
-  { id: 7, title: 'Tabungan Deposito dan Dana Wisuda', short: 'FV anuitas biasa dan di muka', level: 'Menengah' },
-  { id: 8, title: 'Raka dan Dani Menabung Setelah Menunggu', short: 'FV anuitas ditunda', level: 'Lanjut' },
-  { id: 9, title: 'Asuransi Pendidikan Anak', short: 'Gabungan FV dan PV ditunda', level: 'Lanjut' },
-  { id: 10, title: 'Analisis Brosur Kredit', short: 'Bunga efektif tersembunyi', level: 'Lanjut' },
-];
+/* ================= KASUS 7 — Tabungan Deposito (FV) ================= */
+const kasus7 = {
+  id: 7, level: 'Menengah', title: 'Tabungan Deposito: Simpan Sekaligus atau Menabung Rutin?', short: 'FV anuitas biasa dan di muka',
+  unit: 'bulan', conv: 12, goal: 'max', rateLabel: 'j<sub>12</sub>',
+  horizon: p => p.y * 12,
+  params: [
+    { key: 'L', label: 'Simpan sekaligus', min: 10e6, max: 150e6, step: 1e6, unit: 'rp' },
+    { key: 'A', label: 'Setoran rutin', min: 100000, max: 2e6, step: 50000, unit: 'rp' },
+    { key: 'y', label: 'Lama (tahun)', min: 1, max: 30, step: 1, unit: 'int' },
+    { key: 'j', label: 'j<sub>12</sub> (% p.a.)', min: 0.5, max: 12, step: 0.1, unit: 'pct' },
+  ],
+  defaults: { L: 50e6, A: 500000, y: 10, j: 6 },
+  scenarios: [
+    { label: 'Tabungan A · 6%', values: { L: 50e6, A: 500000, y: 10, j: 6 } },
+    { label: 'Tabungan B · 3,6%', values: { L: 50e6, A: 500000, y: 10, j: 3.6 } },
+    { label: 'Tabungan C · 4,8%', values: { L: 50e6, A: 500000, y: 10, j: 4.8 } },
+  ],
+  storyTitle: 'Tiga tawaran tabungan untuk Bu Rina',
+  story: () => `<p>Bu Rina, staf administrasi FMIPA, ingin menyiapkan dana 10 tahun lagi. Ia punya dua cara: menyimpan <b>Rp50 juta sekarang</b> lalu membiarkannya berkembang, atau <b>menabung rutin Rp500.000 per bulan</b> selama 10 tahun (total Rp60 juta).</p>
+    <p>Tiga bank menawarkan bunga berbeda. Mana yang menghasilkan dana terbesar di akhir tahun ke-10? Mulai dari Tabungan A.</p>
+    <div class="tbl-wrap scen-table"><table><thead><tr><th>TABUNGAN</th><th>BUNGA j<sub>12</sub></th></tr></thead><tbody>
+    <tr><td>A</td><td>6%</td></tr><tr><td>B</td><td>3,6%</td></tr><tr><td>C</td><td>4,8%</td></tr></tbody></table></div>`,
+  options: p => [
+    { tone: 'c', name: 'Sekaligus', value: rpShort(p.L), detail: `Disetor hari ini, dibiarkan ${p.y} tahun.` },
+    { tone: 'v', name: 'Rutin akhir bulan', value: `${rp(p.A, 0)}/bln`, detail: `${p.y * 12} kali setoran di akhir bulan. Total ${rpShort(p.A * p.y * 12)}.` },
+    { tone: 'o', name: 'Rutin awal bulan', value: `${rp(p.A, 0)}/bln`, detail: 'Sama, tetapi disetor di awal bulan (anuitas di muka).' },
+  ],
+  guess: { q: 'Untuk Tabungan A (6%), mana yang menghasilkan dana lebih besar di akhir tahun ke-10?', choices: [['L', 'Sekaligus', 'Rp50 jt sekarang'], ['R', 'Rutin', 'Rp500 rb × 120']] },
+  streams: (p, i) => {
+    const H = p.y * 12;
+    return [
+      { key: 'L', label: 'Sekaligus', tone: 'c', flows: lump(p.L), formula: fvLumpFormula(p.L, i, H) },
+      { key: 'R', label: 'Rutin akhir bulan', tone: 'v', flows: annuityFlows({ A: p.A, n: H }), timeline: true, formula: fvAnnuityFormula({ A: p.A, n: H, i }) },
+      { key: 'D', label: 'Rutin awal bulan', tone: 'o', flows: annuityFlows({ A: p.A, n: H, type: 'dimuka' }), timeline: true, formula: fvAnnuityFormula({ A: p.A, n: H, i, due: true }) },
+    ];
+  },
+  guessAnswer: (p, r) => (r.best.key === 'L' ? 'L' : 'R'),
+  summarize: (p, i, s, v) => {
+    const r = compare(s, v, 'max', 'FV', `akhir tahun ke-${p.y}`);
+    const f = ii => p.L * Math.pow(1 + ii, p.y * 12) - p.A * sAngle(p.y * 12, ii);
+    const cr = crossRate(f, 1e-6, 0.05);
+    r.insight = (cr == null ? 'Pada rentang bunga ini urutan sekaligus vs rutin tidak berubah.' : `Sekaligus dan rutin akhir bulan bernilai sama ketika j12 ≈ ${fmt(cr * 1200, 2)}%. Di atas itu, simpan sekaligus lebih unggul.`) + ' Rutin awal bulan selalu (1 + i) kali rutin akhir bulan.';
+    return r;
+  },
+  pvText: (p, shown) => `FV = ${rp(shown.key === 'D' ? p.A * sAngle(p.y * 12, p.j / 1200) * (1 + p.j / 1200) : p.A * sAngle(p.y * 12, p.j / 1200), 0)}`,
+  steps: p => {
+    const i = p.j / 1200, n = p.y * 12, sn = sAngle(n, i), fvR = p.A * sn, fvL = p.L * Math.pow(1 + i, n);
+    return [
+      { ...numStep('Bunga per periode', `j12 = ${fmt(p.j, 0)}%. Berapa i per bulan (dalam persen)?`, i * 100, `Benar, i = ${fmt(i * 100, 1)}% per bulan.`, 'Bagi j12 dengan 12.', 0.001), alt: i },
+      numStep('Faktor akumulasi', `Hitung s${n}|${fmt(i * 100, 1)}% = ((1 + ${fmt(i, 3)})^${n} − 1) ÷ ${fmt(i, 3)}. Tulis sampai 4 desimal.`, sn,
+        `Benar, s${n}| ≈ ${fmt(sn, 4)}. Rp1 per bulan selama ${n} bulan terkumpul menjadi Rp${fmt(sn, 2)}.`, `Hitung dulu ${fmt(1 + i, 3)}^${n} ≈ ${fmt(Math.pow(1 + i, n), 4)}.`, 0.0005),
+      numStep('FV menabung rutin', `Hitung FV setoran rutin di akhir bulan = ${fmt(p.A, 0)} × s${n}|.`, fvR, `Benar, FV ≈ ${rp(fvR)}.`, 'Kalikan setoran dengan faktor akumulasi.'),
+      numStep('FV simpan sekaligus', `Hitung FV Rp50 juta setelah ${n} bulan: 50.000.000 × (1 + ${fmt(i, 3)})^${n}.`, fvL, `Benar, FV ≈ ${rp(fvL)}.`, `(1 + ${fmt(i, 3)})^${n} ≈ ${fmt(Math.pow(1 + i, n), 4)}.`),
+      choiceStep(`FV sekaligus ${rpShort(fvL)}, FV rutin ${rpShort(fvR)}. Mana yang dipilih untuk Tabungan A?`, [['L', 'Sekaligus'], ['R', 'Rutin']], fvL > fvR ? 'L' : 'R',
+        'Tepat. Pilih dana akhir yang paling besar.', 'Bandingkan nilai di akhir tahun ke-10.'),
+    ];
+  },
+  conclusion: p => {
+    const i = p.j / 1200, n = p.y * 12;
+    return `<p>Pada Tabungan A, Rp50 juta yang disimpan sekarang tumbuh menjadi ${rpShort(p.L * Math.pow(1 + i, n))}, lebih besar dari tabungan rutin ${rpShort(p.A * sAngle(n, i))} walaupun total setoran rutin lebih besar (Rp60 juta). Uang yang masuk lebih awal punya lebih banyak waktu untuk berbunga.</p>
+      <p><b>Tantangan:</b> pilih Tabungan B (3,6%) di eksperimen. Keputusannya berbalik. Kenapa bunga yang lebih kecil membuat menabung rutin unggul?</p>`;
+  },
+};
+
+/* ================= KASUS 8 — Raka dan Dani (FV ditunda) ================= */
+const monthsToTarget = (A, i, target) => { for (let n = 1; n <= 600; n++) if (A * sAngle(n, i) >= target) return n; return null; };
+const kasus8 = {
+  id: 8, level: 'Lanjut', title: 'Raka dan Dani: Menabung Setelah Menunggu', short: 'FV anuitas ditunda, biaya penundaan',
+  unit: 'bulan', conv: 12, goal: 'max', rateLabel: 'j<sub>12</sub>',
+  horizon: p => p.m + p.n,
+  params: [
+    { key: 'A', label: 'Setoran A', min: 100000, max: 3e6, step: 50000, unit: 'rp' },
+    { key: 'm', label: 'Tunda m', min: 0, max: 24, step: 1, unit: 'int' },
+    { key: 'n', label: 'n setoran', min: 6, max: 60, step: 1, unit: 'int' },
+    { key: 'T', label: 'Target', min: 5e6, max: 150e6, step: 1e6, unit: 'rp' },
+    { key: 'j', label: 'j<sub>12</sub> (% p.a.)', min: 0.5, max: 15, step: 0.25, unit: 'pct' },
+  ],
+  defaults: { A: 800000, m: 6, n: 24, T: 20e6, j: 6 },
+  scenarios: [
+    { label: 'Raka', values: { A: 800000, m: 6, n: 24, T: 20e6 } },
+    { label: 'Dani', values: { A: 1.5e6, m: 3, n: 36, T: 60e6 } },
+  ],
+  storyTitle: 'Dua lulusan, dua masa tunggu',
+  story: () => `<p><b>Raka</b> langsung bekerja setelah lulus, tetapi 6 bulan pertama gajinya habis untuk melunasi KTA biaya kuliah. Setelah itu ia menabung Rp800.000 setiap akhir bulan selama 24 bulan untuk modal usaha.</p>
+    <p><b>Dani</b> menjalani masa probasi 3 bulan dengan gaji dipotong, jadi belum bisa menabung. Setelah diangkat, ia menabung Rp1.500.000 setiap akhir bulan selama 36 bulan untuk dana pernikahan dengan target Rp60 juta. Bunga investasi j<sub>12</sub> = 6%.</p>`,
+  options: p => [
+    { tone: 'v', name: 'Raka', value: `${rp(p.A, 0)}/bln`, detail: `Tunda ${p.m} bulan, lalu ${p.n} setoran. Dana dihitung di akhir bulan ke-${p.m + p.n}.` },
+    { tone: 'c', name: 'Dani', value: 'Rp1.500.000/bln', detail: 'Tunda 3 bulan, lalu 36 setoran. Target Rp60 jt di akhir bulan ke-39.' },
+  ],
+  guess: { q: `Andai Raka bisa menabung sejak bulan pertama (30 setoran), tabungannya bertambah 6 setoran. Selisih dananya di akhir bulan ke-30…`, choices: [['sama', 'Sekitar Rp4,8 jt', '6 × Rp800 rb'], ['lebih', 'Lebih dari Rp4,8 jt', ''], ['kurang', 'Kurang dari Rp4,8 jt', '']] },
+  streams: (p, i) => {
+    const H = p.m + p.n;
+    return [
+      { key: 'T', label: 'Setelah menunggu', tone: 'v', flows: annuityFlows({ A: p.A, n: p.n, type: 'ditunda', m: p.m }), timeline: true, defer: p.m, formula: fvAnnuityFormula({ A: p.A, n: p.n, i }) },
+      { key: 'L', label: 'Tanpa menunggu', tone: 'c', flows: annuityFlows({ A: p.A, n: H }), timeline: true, formula: fvAnnuityFormula({ A: p.A, n: H, i }) },
+    ];
+  },
+  guessAnswer: () => 'lebih',
+  summarize: (p, i, s, v) => {
+    const H = p.m + p.n, cost = v.L - v.T, need = monthsToTarget(p.A, i, p.T);
+    return {
+      kpis: [['FV setelah menunggu', rpShort(v.T)], ['FV tanpa menunggu', rpShort(v.L)], ['Biaya penundaan', rpShort(cost)], ['Target', rpShort(p.T)]],
+      decision: { tone: v.T >= p.T ? 'v' : 'o', text: v.T >= p.T ? `Target ${rpShort(p.T)} tercapai di akhir bulan ke-${H}: dana terkumpul ${rp(v.T, 0)}.` : `Target ${rpShort(p.T)} belum tercapai di akhir bulan ke-${H}: dana baru ${rp(v.T, 0)}, kurang ${rp(p.T - v.T, 0)}.` },
+      insight: `Penundaan ${p.m} bulan mengurangi dana akhir sebesar ${rp(cost, 0)}, lebih dari ${p.m} × setoran (${rp(p.m * p.A, 0)}) karena bunga yang hilang. ${need ? `Dengan setoran ini, target butuh ${need} setoran (selesai di akhir bulan ke-${p.m + need}).` : ''}`,
+    };
+  },
+  steps: p => {
+    const i = p.j / 1200, H = p.m + p.n, sn = sAngle(p.n, i), fvT = p.A * sn, fvL = p.A * sAngle(H, i);
+    return [
+      typeStep('Raka baru mulai menabung setelah 6 bulan. Jenis anuitas apa?', 'ditunda', 'Tepat, anuitas ditunda 6 bulan.', 'Ada masa tunggu sebelum setoran pertama.'),
+      numStep('Faktor akumulasi', `Dana dihitung tepat saat setoran terakhir (akhir bulan ke-${H}). Hitung s${p.n}|0,5%.`, sn,
+        `Benar, s${p.n}| ≈ ${fmt(sn, 4)}. Masa tunda tidak mengubah rumus FV di akhir setoran: yang dihitung hanya ${p.n} setoran.`, `((1,005)^${p.n} − 1) ÷ 0,005, dengan 1,005^${p.n} ≈ ${fmt(Math.pow(1 + i, p.n), 4)}.`, 0.0005),
+      numStep('FV setelah menunggu', `Hitung FV tabungan Raka = ${fmt(p.A, 0)} × s${p.n}|.`, fvT, `Benar, FV ≈ ${rp(fvT)}.`, 'Kalikan setoran dengan faktor akumulasi.'),
+      numStep('FV tanpa menunggu', `Seandainya Raka menabung sejak bulan pertama: ${fmt(p.A, 0)} × s${H}|.`, fvL, `Benar, FV ≈ ${rp(fvL)}.`, `s${H}| = ((1,005)^${H} − 1) ÷ 0,005 ≈ ${fmt(sAngle(H, i), 4)}.`),
+      numStep('Biaya penundaan', 'Berapa selisih kedua dana tersebut?', fvL - fvT, `Benar, selisihnya ≈ ${rp(fvL - fvT)}, lebih dari 6 × Rp800.000 = Rp4.800.000.`, 'Kurangkan hasil tahap 3 dari tahap 4.'),
+    ];
+  },
+  conclusion: p => {
+    const i = p.j / 1200, cost = p.A * (sAngle(p.m + p.n, i) - sAngle(p.n, i));
+    return `<p>Enam setoran yang hilang bernilai ${rp(cost, 0)} di akhir bulan ke-30, bukan sekadar Rp4,8 juta, karena setoran awal paling lama berbunga. Menunda menabung selalu lebih mahal dari jumlah setoran yang dilewatkan.</p>
+      <p><b>Tantangan:</b> pilih skenario Dani di eksperimen. Apakah target Rp60 juta tercapai di akhir bulan ke-39? Kalau belum, butuh berapa setoran lagi?</p>`;
+  },
+};
+
+/* ================= KASUS 9 — Asuransi Pendidikan ================= */
+const k9 = p => {
+  const i = p.j / 1200, nPrem = p.yp * 12, start = nPrem + p.yt * 12, nBen = p.yk * 12;
+  const pvBen = p.B * aDue(nBen, i) * disc(i, start);
+  return { i, nPrem, start, nBen, pvBen, P: pvBen / aAngle(nPrem, i) };
+};
+const kasus9 = {
+  id: 9, level: 'Lanjut', title: 'Asuransi Pendidikan Anak: Berapa Preminya?', short: 'Gabungan anuitas biasa, ditunda, dan di muka',
+  unit: 'bulan', conv: 12, goal: 'solve', rateLabel: 'j<sub>12</sub>',
+  params: [
+    { key: 'B', label: 'Manfaat/bulan', min: 1e6, max: 15e6, step: 250000, unit: 'rp' },
+    { key: 'yk', label: 'Kuliah (tahun)', min: 1, max: 6, step: 1, unit: 'int' },
+    { key: 'yp', label: 'Bayar premi (thn)', min: 3, max: 15, step: 1, unit: 'int' },
+    { key: 'yt', label: 'Masa tunda (thn)', min: 0, max: 10, step: 1, unit: 'int' },
+    { key: 'j', label: 'j<sub>12</sub> (% p.a.)', min: 0.5, max: 12, step: 0.25, unit: 'pct' },
+  ],
+  defaults: { B: 5e6, yk: 4, yp: 9, yt: 3, j: 6 },
+  storyTitle: 'Pak Budi menyiapkan dana kuliah',
+  story: () => `<p>Pak Budi mendaftarkan anaknya yang baru masuk kelas 1 SD ke asuransi dana pendidikan tinggi. Premi dibayar <b>setiap akhir bulan selama 9 tahun</b> (kelas 1 SD sampai kelas 3 SMP).</p>
+    <p>Setelah premi lunas, ada <b>masa tunda 3 tahun</b> (SMA). Lalu anaknya menerima manfaat <b>Rp5.000.000 di awal setiap bulan selama 4 tahun kuliah</b>. Dengan j<sub>12</sub> = 6%, berapa premi bulanan yang adil?</p>`,
+  options: () => [
+    { tone: 'o', name: 'Premi', value: 'P × 108', detail: 'Akhir bulan ke-1 sampai ke-108 (anuitas biasa).' },
+    { tone: 'v', name: 'Manfaat', value: 'Rp5 jt × 48', detail: 'Awal bulan ke-145 sampai ke-192, yaitu t = 144 … 191 (di muka dan ditunda).' },
+  ],
+  guess: { q: 'Total manfaat 48 × Rp5 jt = Rp240 jt. Total premi yang dibayar Pak Budi selama 9 tahun kira-kira…', choices: [['lebih', 'Lebih dari Rp240 jt', ''], ['sama', 'Sekitar Rp240 jt', ''], ['kurang', 'Kurang dari Rp240 jt', '']] },
+  streams: (p, i) => {
+    const k = k9(p), ben = [];
+    for (let t = 0; t < k.nBen; t++) ben.push({ t: k.start + t, amt: p.B });
+    return [
+      { key: 'P', label: 'Premi', tone: 'o', flows: annuityFlows({ A: k.P, n: k.nPrem }), timeline: true, formula: annuityFormula({ A: k.P, n: k.nPrem, i }) },
+      { key: 'B', label: 'Manfaat', tone: 'v', flows: ben, timeline: true,
+        formula: `${it('PV')} = ${it('B')}·${it('v')}<sup>${k.start}</sup>·${act('ä', k.nBen)} = ${fmt(p.B, 0)} · ${fmt(disc(i, k.start), 6)} · ${fmt(aDue(k.nBen, i), 4)} = <b class="num">${rp(k.pvBen)}</b>` },
+    ];
+  },
+  guessAnswer: () => 'kurang',
+  summarize: p => {
+    const k = k9(p);
+    return {
+      kpis: [['Premi P', rp(k.P, 0)], ['PV manfaat', rpShort(k.pvBen)], ['Total premi', rpShort(k.P * k.nPrem)], ['Total manfaat', rpShort(p.B * k.nBen)]],
+      decision: { tone: 'v', text: `Premi bulanan ${rp(k.P)} selama ${p.yp} tahun. Nilai sekarang premi tepat sama dengan nilai sekarang manfaat, ${rp(k.pvBen, 0)}.` },
+      insight: `Total premi ${rpShort(k.P * k.nPrem)} jauh lebih kecil dari total manfaat ${rpShort(p.B * k.nBen)}, karena premi sempat berbunga bertahun-tahun sebelum manfaat mulai dibayarkan.`,
+    };
+  },
+  pvText: p => `PV = ${rp(k9(p).pvBen, 0)}`,
+  steps: p => {
+    const k = k9(p), ad = aDue(k.nBen, k.i), atStart = p.B * ad, vS = disc(k.i, k.start), a = aAngle(k.nPrem, k.i);
+    return [
+      { ...numStep('Bunga per periode', 'j12 = 6%. Berapa i per bulan (dalam persen)?', 0.5, 'Benar, i = 0,5% per bulan.', 'Bagi j12 dengan 12.', 0.001), alt: 0.005 },
+      numStep('Manfaat di awal kuliah', `Nilai seluruh manfaat tepat di awal kuliah (t = ${k.start}) = 5.000.000 × ä48|0,5%. Hitung.`, atStart,
+        `Benar, ≈ ${rp(atStart)} (ä48| ≈ ${fmt(ad, 4)}).`, `ä48| = a48| × 1,005, dengan a48| ≈ ${fmt(aAngle(k.nBen, k.i), 4)}.`),
+      numStep('Diskon ke hari ini', `Diskontokan ke t = 0: kalikan dengan v^${k.start} = 1,005^−${k.start}. Berapa v^${k.start}? (6 desimal)`, vS,
+        `Benar, v^${k.start} ≈ ${fmt(vS, 6)}, sehingga PV manfaat ≈ ${rp(k.pvBen)}.`, `Masa premi 108 bulan + tunda 36 bulan = ${k.start} bulan.`, 0.0005),
+      numStep('Faktor premi', `Premi dibayar akhir bulan selama ${k.nPrem} bulan. Hitung a${k.nPrem}|0,5%.`, a, `Benar, a${k.nPrem}| ≈ ${fmt(a, 4)}.`, `(1 − 1,005^−${k.nPrem}) ÷ 0,005.`, 0.0005),
+      numStep('Premi bulanan', 'Prinsip keadilan: PV premi = PV manfaat. Hitung P = PV manfaat ÷ a108|.', k.P, `Benar, premi ≈ ${rp(k.P)} per bulan.`, 'Bagi PV manfaat dengan faktor premi.'),
+    ];
+  },
+  conclusion: p => {
+    const k = k9(p);
+    return `<p>Pak Budi cukup membayar ${rp(k.P, 0)} per bulan. Total premi ${rpShort(k.P * k.nPrem)} lebih kecil dari total manfaat Rp240 jt karena setiap premi berbunga lama sebelum dipakai. Kasus ini menggabungkan tiga jenis anuitas: premi (biasa), masa SMA (penundaan), dan uang kuliah (di muka).</p>
+      <p><b>Refleksi:</b> di eksperimen, perpendek masa bayar premi menjadi 6 tahun. Berapa premi yang dibutuhkan, dan kenapa naiknya lebih dari 9/6 kali?</p>`;
+  },
+};
+
+/* ================= KASUS 10 — Analisis Brosur Kredit ================= */
+const k10 = p => {
+  const P = p.H - p.D, C = (P * (1 + (p.f / 100) * p.n)) / p.n;
+  const i = p.f === 0 ? 0 : crossRate(ii => C * aAngle(p.n, ii) - P, 1e-7, 0.2) || 0;
+  return { P, C, i };
+};
+const kasus10 = {
+  id: 10, level: 'Lanjut', title: 'Analisis Brosur Kredit: Bunga Flat yang Menipu', short: 'Bunga efektif tersembunyi di balik bunga flat',
+  unit: 'bulan', conv: 12, goal: 'solve', rateLabel: 'i',
+  rate: p => k10(p).i,
+  params: [
+    { key: 'H', label: 'Harga tunai', min: 5e6, max: 60e6, step: 500000, unit: 'rp' },
+    { key: 'D', label: 'Uang muka', min: 0, max: 20e6, step: 250000, unit: 'rp' },
+    { key: 'f', label: 'Bunga flat %/bln', min: 0, max: 3, step: 0.05, unit: 'pct' },
+    { key: 'n', label: 'Tenor (bulan)', min: 6, max: 48, step: 1, unit: 'int' },
+  ],
+  defaults: { H: 20e6, D: 2e6, f: 1, n: 24 },
+  storyTitle: 'Brosur motor di depan kampus',
+  story: () => `<p>Sebuah dealer di Jatinangor membagikan brosur kredit motor: harga tunai <b>Rp20.000.000</b>, uang muka <b>Rp2.000.000</b>, tenor <b>24 bulan</b>, dan tertulis besar-besar <b>"bunga hanya 1% per bulan"</b>.</p>
+    <p>Di bawahnya ada catatan kecil: <i>bunga flat</i>. Artinya bunga dihitung dari pokok awal sepanjang tenor, lalu dibagi rata ke setiap cicilan akhir bulan. Benarkah bunganya hanya 1% per bulan?</p>`,
+  options: p => {
+    const k = k10(p);
+    return [
+      { tone: 'c', name: 'Pokok kredit', value: rp(k.P, 0), detail: 'Harga tunai dikurangi uang muka.' },
+      { tone: 'o', name: 'Cicilan brosur', value: `${rp(k.C, 0)}/bln`, detail: `(${rpShort(k.P)} + ${p.n} × 1% × ${rpShort(k.P)}) ÷ ${p.n}.` },
+    ];
+  },
+  guess: { q: 'Bunga efektif yang sebenarnya dibayar per bulan…', choices: [['sama', 'Tepat 1%', 'sesuai brosur'], ['lebih', 'Lebih dari 1%', ''], ['kurang', 'Kurang dari 1%', '']] },
+  streams: (p, i) => {
+    const k = k10(p);
+    return [
+      { key: 'C', label: 'Cicilan', tone: 'o', flows: annuityFlows({ A: k.C, n: p.n }), timeline: true, formula: annuityFormula({ A: k.C, n: p.n, i }) },
+      { key: 'P', label: 'Pokok kredit', tone: 'c', flows: lump(k.P), formula: lumpFormula(k.P, 'diterima') },
+    ];
+  },
+  guessAnswer: () => 'lebih',
+  summarize: p => {
+    const k = k10(p), eff = Math.pow(1 + k.i, 12) - 1;
+    return {
+      kpis: [['Cicilan', rp(k.C, 0)], ['Total bunga', rpShort(k.C * p.n - k.P)], ['j12 efektif', fmt(k.i * 1200, 2) + '%'], ['Bunga efektif/thn', fmt(eff * 100, 2) + '%']],
+      decision: { tone: 'o', text: `Brosur menulis ${fmt(p.f, 2)}% flat per bulan, tetapi bunga efektif sebenarnya ${fmt(k.i * 100, 3)}% per bulan (setara ${fmt(eff * 100, 2)}% per tahun).` },
+      insight: `Bunga flat dihitung dari pokok awal selama seluruh tenor, padahal sisa pokok terus berkurang setiap kali mencicil. ${p.f > 0 ? `Akibatnya bunga efektif ${fmt((k.i * 100) / p.f, 2)} kali bunga flat. ` : ''}Isi slider dengan data brosur kelompokmu untuk tugas studi kasus.`,
+    };
+  },
+  pvText: p => `PV = ${rp(k10(p).P, 0)}`,
+  steps: p => {
+    const k = k10(p), pv1 = k.C * aAngle(p.n, 0.01);
+    return [
+      numStep('Pokok kredit', 'Berapa pokok kredit (harga tunai − uang muka)?', k.P, `Benar, pokok ${rp(k.P, 0)}.`, '20.000.000 − 2.000.000.', 0.0001),
+      numStep('Cicilan flat', 'Bunga flat: total bunga = pokok × 1% × 24. Cicilan = (pokok + total bunga) ÷ 24. Berapa cicilannya?', k.C,
+        `Benar, cicilan ${rp(k.C, 0)} per bulan.`, `Total bunga = 18.000.000 × 0,01 × 24 = ${fmt(k.P * 0.01 * p.n, 0)}.`, 0.001),
+      numStep('Uji di 1%', `Kalau bunganya benar 1% per bulan, PV cicilan = ${fmt(k.C, 0)} × a24|1%. Hitung.`, pv1,
+        `Benar, ≈ ${rp(pv1, 0)}. Hasilnya lebih besar dari pokok ${rp(k.P, 0)}.`, 'a24|1% ≈ 21,2434.'),
+      choiceStep('PV cicilan pada 1% lebih besar dari pokok. Artinya bunga efektif yang membuat PV = pokok…', [['lebih', 'Lebih dari 1%'], ['kurang', 'Kurang dari 1%']], 'lebih',
+        'Tepat. PV turun ketika bunga naik, jadi untuk menurunkan PV ke pokok, bunganya harus lebih dari 1%.', 'Ingat: semakin besar i, semakin kecil PV.'),
+      { ...numStep('Bunga efektif', 'Cari i per bulan (dalam persen) sehingga 930.000 × a24|i = 18.000.000. Coba-coba beberapa nilai, tulis sampai 2 desimal.', k.i * 100,
+        `Benar, i efektif ≈ ${fmt(k.i * 100, 3)}% per bulan, hampir dua kali bunga di brosur.`, `Coba i = 1,7% dan 1,9%: hitung a24|i lalu bandingkan dengan 18.000.000 ÷ 930.000 ≈ ${fmt(k.P / k.C, 4)}.`, 0.02), alt: k.i },
+    ];
+  },
+  conclusion: p => {
+    const k = k10(p), eff = Math.pow(1 + k.i, 12) - 1;
+    return `<p>"1% per bulan" di brosur adalah bunga flat. Bunga efektifnya ${fmt(k.i * 100, 2)}% per bulan atau ${fmt(eff * 100, 1)}% per tahun. Nilai sekarang cicilan baru sama dengan pokok kredit pada bunga efektif itu, bukan pada 1%.</p>
+      <p><b>Tugas kelompok:</b> buka eksperimen, isi harga tunai, uang muka, bunga flat, dan tenor dari brosur yang kalian temukan, lalu bandingkan bunga efektifnya dengan klaim di brosur.</p>`;
+  },
+};
+
+export const CASES = [kasus1, kasus2, kasus3, kasus4, kasus5, kasus6, kasus7, kasus8, kasus9, kasus10];
+export const UPCOMING = [];
 
 export const levelTone = lv => (lv === 'Dasar' ? '' : lv === 'Menengah' ? 'c' : 'o');
 export { pct };

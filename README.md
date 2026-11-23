@@ -9,11 +9,9 @@ Mahasiswa belajar mandiri lewat alur: **Situasi → Tebakan awal → Lintasan wa
 | Halaman | Alamat | Keterangan |
 |---|---|---|
 | Beranda | `#/` | Hero 3D (koin meluncur ke t = 0 dan menumpuk menjadi PV), katalog kasus dengan progres |
-| Studi Kasus 01–06 | `#/kasus/1` … `#/kasus/6` | PV anuitas biasa, arus kas tidak sama, mencari angsuran, dana pensiun, anuitas di muka, anuitas ditunda |
+| Studi Kasus 01–10 | `#/kasus/1` … `#/kasus/10` | PV anuitas biasa, arus kas tidak sama, mencari angsuran, dana pensiun, anuitas di muka, anuitas ditunda, FV tabungan, FV ditunda, asuransi pendidikan, brosur kredit (bunga flat vs efektif) |
 | Ringkasan Rumus | `#/rumus` | Kartu rumus + penurunan PV dari deret geometri langkah demi langkah |
 | Uji Pemahaman | `#/latihan` | 10 soal acak, pembahasan sesuai angka soal, deteksi kesalahan umum, skor per topik |
-
-Kasus 07–10 (FV, FV ditunda, asuransi pendidikan, brosur kredit) tercantum di katalog sebagai "Segera".
 
 Tidak ada login maupun backend. Nama, NPM, progres kasus, dan riwayat skor disimpan di `localStorage` browser mahasiswa, hanya untuk refleksi.
 
@@ -51,6 +49,8 @@ public/logo-unpad.png
 
 Semua kasus ada di `src/data/cases.js`. Setiap kasus berupa satu objek dengan:
 
+- `horizon` (opsional): untuk kasus nilai akan datang; nilai dihitung di t = H dan lintasan 3D mengakumulasi koin ke akhir;
+- `rate` (opsional): tingkat bunga per periode yang dihitung sendiri (mis. bunga efektif dari bunga flat);
 - `params` dan `defaults`: slider eksperimen dan nilai awal (`j` = bunga nominal per tahun dalam %, `conv` = banyak konversi per tahun);
 - `scenarios` (opsional): beberapa varian, misalnya Kasus 1–3 dana pensiun;
 - `story`, `options`, `guess`: teks situasi dan tebakan awal;
